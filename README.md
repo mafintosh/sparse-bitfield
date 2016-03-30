@@ -10,6 +10,8 @@ This module is mostly useful if you need a big bitfield where you won't nessecar
 npm install sparse-bitfield
 ```
 
+[![build status](http://img.shields.io/travis/mafintosh/sparse-bitfield.svg?style=flat)](http://travis-ci.org/mafintosh/sparse-bitfield)
+
 ## Usage
 
 ``` js
