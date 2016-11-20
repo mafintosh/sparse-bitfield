@@ -1,111 +1,136 @@
-var BUCKETS = 256
-var BITFIELD_BYTE_LENGTH = 1024
-var BITFIELD_LENGTH = 8 * BITFIELD_BYTE_LENGTH
+var bits = require('bit-encode')
+var Buffer = require('safe-buffer').Buffer
+
+var BRANCHES = 256
 
 module.exports = SparseBitfield
 
-function SparseBitfield () {
-  if (!(this instanceof SparseBitfield)) return new SparseBitfield()
+function SparseBitfield (opts) {
+  if (!(this instanceof SparseBitfield)) return new SparseBitfield(opts)
+  if (!opts) opts = {}
 
-  this.length = BITFIELD_LENGTH
-  this.bucketLength = 0
-  this.buckets = null
-  this.bitfield = null
+  this.pageSize = opts.pageSize || 1024
+  this.length = 8 * this.pageSize
+  this.updates = opts.trackUpdates ? [] : null
+  this.tree = new BitTree()
 }
 
-SparseBitfield.BITFIELD_LENGTH = BITFIELD_LENGTH
-SparseBitfield.BITFIELD_BYTE_LENGTH = BITFIELD_BYTE_LENGTH
-SparseBitfield.BUCKETS = BUCKETS
+SparseBitfield.prototype.nextUpdate = function () {
+  if (!this.updates || !this.updates.length) return null
+  var next = this.updates.shift()
+  next.updated = false
+  return next
+}
 
-SparseBitfield.prototype.setBuffer = function (index, buffer) {
-  while (index >= this.length) this.grow()
+SparseBitfield.prototype.toBuffer = function () {
+  var blank = Buffer.alloc(this.pageSize)
+  var bufs = []
 
-  if (!this.buckets) {
-    this.bitfield = buffer
-    return
+  for (var i = 0; i < this.length / 8; i += this.pageSize) {
+    bufs.push(this.getBuffer(i))
   }
 
-  var bucket = Math.floor(index / this.bucketLength)
-  var remainder = index - bucket * this.bucketLength
+  while (bufs.length && !bufs[bufs.length - 1]) bufs.pop()
+  for (var j = 0; j < bufs.length; j++) {
+    if (!bufs[j]) bufs[j] = blank
+  }
 
-  if (!this.buckets[bucket]) this.buckets[bucket] = new SparseBitfield()
-  this.buckets[bucket].setBuffer(remainder, buffer)
+  return bufs.length === 1 ? bufs[0] : Buffer.concat(bufs, bufs.length * this.pageSize)
 }
 
-SparseBitfield.prototype.getBuffer = function (index) {
-  if (index >= this.length) return null
-  if (this.bitfield) return this.bitfield
-
-  var bucket = Math.floor(index / this.bucketLength)
-  var remainder = index - bucket * this.bucketLength
-
-  if (!this.buckets[bucket]) return null
-  return this.buckets[bucket].getBuffer(remainder)
+SparseBitfield.prototype.getBuffer = function (offset, buffer) {
+  var tree = this._find(offset * 8, false)
+  if (!tree || !tree.bitfield) return null
+  return tree.bitfield.buffer
 }
 
-SparseBitfield.prototype.get = function (index) {
-  if (index >= this.length) return false
-  if (this.bitfield) return get(this.bitfield, index)
+SparseBitfield.prototype.setBuffer = function (offset, buffer) {
+  while (buffer.length > this.pageSize) {
+    this._setBuffer(offset, buffer.slice(0, this.pageSize))
+    buffer = buffer.slice(this.pageSize)
+    offset += this.pageSize
+  }
 
-  var bucket = Math.floor(index / this.bucketLength)
-  var remainder = index - bucket * this.bucketLength
-
-  if (!this.buckets || !this.buckets[bucket]) return false
-  return this.buckets[bucket].get(remainder)
+  if (buffer.length !== this.pageSize) throw new Error('Buffer should be a factor of ' + this.pageSize)
+  this._setBuffer(offset, buffer)
 }
 
-SparseBitfield.prototype.set = function (index, val) {
-  while (index >= this.length) this.grow()
+SparseBitfield.prototype._setBuffer = function (offset, buffer) {
+  var tree = this._find(offset * 8, true)
+  if (tree.bitfield) tree.bitfield.buffer = buffer
+  else tree.bitfield = new Bitfield(offset, buffer)
+}
 
-  if (!this.buckets) {
-    if (!this.bitfield) {
-      this.bitfield = Buffer(BITFIELD_BYTE_LENGTH)
-      this.bitfield.fill(0)
+SparseBitfield.prototype.set = function (n, val) {
+  var tree = this._find(n, val)
+
+  if (!tree.bitfield) {
+    var buf = Buffer.alloc(this.pageSize)
+    var offset = (n - n % (this.pageSize * 8)) / 8
+    tree.bitfield = new Bitfield(offset, buf)
+  }
+
+  if (bits.set(tree.bitfield.buffer, n - 8 * tree.bitfield.offset, val)) {
+    if (this.updates && !tree.bitfield.updated) {
+      tree.bitfield.updated = true
+      this.updates.push(tree.bitfield)
     }
-    return set(this.bitfield, index, val)
+    return true
   }
 
-  var bucket = Math.floor(index / this.bucketLength)
-  var remainder = index - bucket * this.bucketLength
-
-  if (!this.buckets[bucket]) this.buckets[bucket] = new SparseBitfield()
-  return this.buckets[bucket].set(remainder, val)
+  return false
 }
 
-SparseBitfield.prototype.grow = function () {
-  var child = null
+SparseBitfield.prototype.get = function (n) {
+  var tree = this._find(n, false)
+  if (!tree || !tree.bitfield) return false
+  return bits.get(tree.bitfield.buffer, n - 8 * tree.bitfield.offset)
+}
 
-  if (this.bitfield || this.buckets) {
-    child = new SparseBitfield()
-    child.buckets = this.buckets
-    child.bitfield = this.bitfield
-    child.bucketLength = this.bucketLength
-    child.length = this.length
+SparseBitfield.prototype._find = function (n, grow) {
+  while (n >= this.length) this._grow()
+
+  var tree = this.tree
+  var treeLength = this.length
+  var bitfieldLength = this.pageSize * 8
+
+  while (true) {
+    if (tree.children) {
+      treeLength /= BRANCHES
+      var child = Math.floor(n / treeLength)
+      n -= child * treeLength
+      if (!tree.children[child]) {
+        if (!grow) return null
+        tree.children[child] = new BitTree()
+      }
+      tree = tree.children[child]
+      continue
+    }
+
+    if (tree.bitfield || treeLength === bitfieldLength) return tree
+    if (!grow) return null
+    tree.children = new Array(BRANCHES)
   }
+}
 
-  this.bucketLength = this.length
-  this.length *= BUCKETS
-  this.buckets = new Array(BUCKETS)
+SparseBitfield.prototype._grow = function () {
+  this.length *= BRANCHES
+
+  if (!this.tree.children && !this.tree.bitfield) return
+
+  var tree = new BitTree()
+  tree.children = new Array(BRANCHES)
+  tree.children[0] = this.tree
+  this.tree = tree
+}
+
+function BitTree () {
+  this.children = null
   this.bitfield = null
-
-  if (child) this.buckets[0] = child
 }
 
-function get (bitfield, index) {
-  var byte = index >> 3
-  var bit = index & 7
-  return !!(bitfield[byte] & (128 >> bit))
-}
-
-function set (bitfield, index, val) {
-  var byte = index >> 3
-  var bit = index & 7
-  var mask = 128 >> bit
-
-  var b = bitfield[byte]
-  var n = val ? b | mask : b & ~mask
-
-  if (b === n) return false
-  bitfield[byte] = n
-  return true
+function Bitfield (offset, buffer) {
+  this.offset = offset
+  this.buffer = buffer
+  this.updated = false
 }

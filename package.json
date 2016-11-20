@@ -1,9 +1,11 @@
 {
   "name": "sparse-bitfield",
   "version": "1.0.0",
-  "description": "Bitfield that allocates a series of 1kb buffers to support sparse bits without allocating a massive buffer",
+  "description": "Bitfield that allocates a series of small buffers to support sparse bits without allocating a massive buffer",
   "main": "index.js",
-  "dependencies": {},
+  "dependencies": {
+    "safe-buffer": "^5.0.1"
+  },
   "devDependencies": {
     "standard": "^6.0.8",
     "tape": "^4.5.1"

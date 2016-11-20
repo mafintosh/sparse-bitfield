@@ -28,9 +28,16 @@ Each 1kb buffer can hold information about 8192 bits so the first one will be us
 
 ## API
 
-#### `var bits = bitfield()`
+#### `var bits = bitfield([options])`
 
-Create a new bitfield
+Create a new bitfield. Options include
+
+``` js
+{
+  pageSize: 1024, // how big should the partial buffers be
+  trackUpdates: false // track when partial bitfields are updated
+}
+```
 
 #### `bits.set(index, value)`
 
@@ -40,13 +47,33 @@ Set a bit to true or false.
 
 Get the value of a bit.
 
-#### `bits.getBuffer(index)`
+#### `var buffer = bits.getBuffer(offset)`
 
-Get the 1kb buffer that stores the value of the index
+Get a partial buffer at a byte offset.
+Returns `null` if offset is not currently in use.
 
-#### `bits.setBuffer(index, buffer)`
+#### `bits.setBuffer(offset, buffer)`
 
-Set the 1kb buffer that stores the value of the index.
+Set a partial buffer corresponding to the byte offset.
+Mostly useful if you reload a serialized bitfield.
+
+#### `var buffer = bits.toBuffer()`
+
+Get a single buffer representing the entire bitfield.
+
+#### `var update = bits.nextUpdate()`
+
+Returns the next updated bitfield if the `trackUpdates` option was set.
+The update contains the following properties
+
+``` js
+{
+  offset: byteOffset,
+  buffer: partialBitfield
+}
+```
+
+If nothing was updated since the last time this was called `null` is returned.
 Mostly useful if you want to serialize the bitfield.
 
 ## License
