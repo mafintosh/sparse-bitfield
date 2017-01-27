@@ -62,7 +62,7 @@ SparseBitfield.prototype._setBuffer = function (offset, buffer) {
 }
 
 SparseBitfield.prototype.set = function (n, val) {
-  var tree = this._find(n, val)
+  var tree = this._find(n, true)
 
   if (!tree.bitfield) {
     var buf = Buffer.alloc(this.pageSize)
