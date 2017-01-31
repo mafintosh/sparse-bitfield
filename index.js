@@ -1,5 +1,5 @@
 var bits = require('bit-encode')
-var Buffer = require('safe-buffer').Buffer
+var alloc = require('buffer-alloc')
 
 var BRANCHES = 256
 
@@ -7,12 +7,21 @@ module.exports = SparseBitfield
 
 function SparseBitfield (opts) {
   if (!(this instanceof SparseBitfield)) return new SparseBitfield(opts)
+  if (Buffer.isBuffer(opts)) opts = {buffer: opts}
   if (!opts) opts = {}
 
   this.pageSize = opts.pageSize || 1024
   this.length = 8 * this.pageSize
   this.updates = opts.trackUpdates ? [] : null
   this.tree = new BitTree()
+
+  var buf = opts.buffer
+
+  if (buf) {
+    for (var i = 0; i < buf.length; i += this.pageSize) {
+      this.setBuffer(i, buf.slice(i, i + this.pageSize))
+    }
+  }
 }
 
 SparseBitfield.prototype.nextUpdate = function () {
@@ -23,7 +32,7 @@ SparseBitfield.prototype.nextUpdate = function () {
 }
 
 SparseBitfield.prototype.toBuffer = function () {
-  var blank = Buffer.alloc(this.pageSize)
+  var blank = alloc(this.pageSize)
   var bufs = []
 
   for (var i = 0; i < this.length / 8; i += this.pageSize) {
@@ -51,8 +60,7 @@ SparseBitfield.prototype.setBuffer = function (offset, buffer) {
     offset += this.pageSize
   }
 
-  if (buffer.length !== this.pageSize) throw new Error('Buffer should be a factor of ' + this.pageSize)
-  this._setBuffer(offset, buffer)
+  this._setBuffer(offset, expand(buffer, this.pageSize))
 }
 
 SparseBitfield.prototype._setBuffer = function (offset, buffer) {
@@ -65,7 +73,7 @@ SparseBitfield.prototype.set = function (n, val) {
   var tree = this._find(n, true)
 
   if (!tree.bitfield) {
-    var buf = Buffer.alloc(this.pageSize)
+    var buf = alloc(this.pageSize)
     var offset = (n - n % (this.pageSize * 8)) / 8
     tree.bitfield = new Bitfield(offset, buf)
   }
@@ -133,4 +141,11 @@ function Bitfield (offset, buffer) {
   this.offset = offset
   this.buffer = buffer
   this.updated = false
+}
+
+function expand (buf, len) {
+  if (buf.length >= len) return buf
+  var clone = alloc(len)
+  buf.copy(clone)
+  return clone
 }

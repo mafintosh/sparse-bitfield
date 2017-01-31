@@ -1,4 +1,4 @@
-var Buffer = require('safe-buffer').Buffer
+var alloc = require('buffer-alloc')
 var tape = require('tape')
 var bitfield = require('./')
 
@@ -43,7 +43,7 @@ tape('get and set buffer', function (t) {
 tape('toBuffer', function (t) {
   var bits = bitfield()
 
-  t.same(bits.toBuffer(), Buffer.alloc(0))
+  t.same(bits.toBuffer(), alloc(0))
 
   bits.set(0, true)
 
@@ -52,5 +52,28 @@ tape('toBuffer', function (t) {
   bits.set(9000, true)
 
   t.same(bits.toBuffer(), Buffer.concat([bits.getBuffer(0), bits.getBuffer(1024)]))
+  t.end()
+})
+
+tape('pass in buffer', function (t) {
+  var bits = bitfield()
+
+  bits.set(0, true)
+  bits.set(9000, true)
+
+  var clone = bitfield(bits.toBuffer())
+
+  t.same(clone.get(0), true)
+  t.same(clone.get(9000), true)
+  t.end()
+})
+
+tape('set small buffer', function (t) {
+  var buf = alloc(1)
+  buf[0] = 255
+  var bits = bitfield(buf)
+
+  t.same(bits.get(0), true)
+  t.same(bits.getBuffer(0).length, bits.pageSize)
   t.end()
 })
