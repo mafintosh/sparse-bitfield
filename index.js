@@ -11,7 +11,8 @@ function SparseBitfield (opts) {
   if (!opts) opts = {}
 
   this.pageSize = opts.pageSize || 1024
-  this.length = 8 * this.pageSize
+  this.length = 0
+  this.treeLength = 8 * this.pageSize
   this.updates = opts.trackUpdates ? [] : null
   this.tree = new BitTree()
 
@@ -35,7 +36,7 @@ SparseBitfield.prototype.toBuffer = function () {
   var blank = alloc(this.pageSize)
   var bufs = []
 
-  for (var i = 0; i < this.length / 8; i += this.pageSize) {
+  for (var i = 0; i < this.treeLength / 8; i += this.pageSize) {
     bufs.push(this.getBuffer(i))
   }
 
@@ -67,6 +68,7 @@ SparseBitfield.prototype._setBuffer = function (offset, buffer) {
   var tree = this._find(offset * 8, true)
   if (tree.bitfield) tree.bitfield.buffer = buffer
   else tree.bitfield = new Bitfield(offset, buffer)
+  this._updateLength(tree)
 }
 
 SparseBitfield.prototype.set = function (n, val) {
@@ -76,6 +78,7 @@ SparseBitfield.prototype.set = function (n, val) {
     var buf = alloc(this.pageSize)
     var offset = (n - n % (this.pageSize * 8)) / 8
     tree.bitfield = new Bitfield(offset, buf)
+    this._updateLength(tree)
   }
 
   if (bits.set(tree.bitfield.buffer, n - 8 * tree.bitfield.offset, val)) {
@@ -96,10 +99,10 @@ SparseBitfield.prototype.get = function (n) {
 }
 
 SparseBitfield.prototype._find = function (n, grow) {
-  while (n >= this.length) this._grow()
+  while (n >= this.treeLength) this._grow()
 
   var tree = this.tree
-  var treeLength = this.length
+  var treeLength = this.treeLength
   var bitfieldLength = this.pageSize * 8
 
   while (true) {
@@ -121,8 +124,13 @@ SparseBitfield.prototype._find = function (n, grow) {
   }
 }
 
+SparseBitfield.prototype._updateLength = function (tree) {
+  var length = (tree.bitfield.offset + this.pageSize) * 8
+  if (length > this.length) this.length = length
+}
+
 SparseBitfield.prototype._grow = function () {
-  this.length *= BRANCHES
+  this.treeLength *= BRANCHES
 
   if (!this.tree.children && !this.tree.bitfield) return
 
