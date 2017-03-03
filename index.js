@@ -1,159 +1,93 @@
-var bits = require('bit-encode')
-var alloc = require('buffer-alloc')
+var pager = require('memory-pager')
 
-var BRANCHES = 256
+module.exports = Bitfield
 
-module.exports = SparseBitfield
-
-function SparseBitfield (opts) {
-  if (!(this instanceof SparseBitfield)) return new SparseBitfield(opts)
-  if (Buffer.isBuffer(opts)) opts = {buffer: opts}
+function Bitfield (opts) {
+  if (!(this instanceof Bitfield)) return new Bitfield(opts)
   if (!opts) opts = {}
+  if (Buffer.isBuffer(opts)) opts = {buffer: opts}
 
-  this.pageSize = opts.pageSize || 1024
   this.length = 0
-  this.treeLength = 8 * this.pageSize
-  this.updates = opts.trackUpdates ? [] : null
-  this.tree = new BitTree()
+  this.byteLength = 0
+  this.pageOffset = opts.pageOffset || 0
+  this.pageSize = opts.pageSize || 1024
+  this.pages = opts.pages || pager(this.pageSize)
 
-  var buf = opts.buffer
+  if (!powerOfTwo(this.pageSize)) throw new Error('The page size should be a power of two')
 
-  if (buf) {
-    for (var i = 0; i < buf.length; i += this.pageSize) {
-      this.setBuffer(i, buf.slice(i, i + this.pageSize))
+  this._trackUpdates = !!opts.trackUpdates
+  this._pageMask = this.pageSize - 1
+
+  if (opts.buffer) {
+    for (var i = 0; i < opts.buffer.length; i += this.pageSize) {
+      this.pages.set(i / this.pageSize, opts.buffer.slice(i, i + this.pageSize))
     }
+    this.byteLength = opts.buffer.length
+    this.length = 8 * this.byteLength
   }
 }
 
-SparseBitfield.prototype.nextUpdate = function () {
-  if (!this.updates || !this.updates.length) return null
-  var next = this.updates.shift()
-  next.updated = false
-  return next
+Bitfield.prototype.get = function (i) {
+  var o = i & 7
+  var j = (i - o) / 8
+
+  return !!(this.getByte(j) & (128 >> o))
 }
 
-SparseBitfield.prototype.toBuffer = function () {
-  var blank = alloc(this.pageSize)
-  var bufs = []
+Bitfield.prototype.getByte = function (i) {
+  var o = i & this._pageMask
+  var j = (i - o) / this.pageSize
+  var page = this.pages.get(j, true)
 
-  for (var i = 0; i < this.treeLength / 8; i += this.pageSize) {
-    bufs.push(this.getBuffer(i))
+  return page ? page.buffer[o + this.pageOffset] : 0
+}
+
+Bitfield.prototype.set = function (i, v) {
+  var o = i & 7
+  var j = (i - o) / 8
+  var b = this.getByte(j)
+
+  return this.setByte(j, v ? b | (128 >> o) : b & (255 ^ (128 >> o)))
+}
+
+Bitfield.prototype.toBuffer = function () {
+  var all = alloc(this.pages.length * this.pageSize)
+
+  for (var i = 0; i < this.pages.length; i++) {
+    var next = this.pages.get(i, true)
+    if (next) next.buffer.copy(all, next.offset)
   }
 
-  while (bufs.length && !bufs[bufs.length - 1]) bufs.pop()
-  for (var j = 0; j < bufs.length; j++) {
-    if (!bufs[j]) bufs[j] = blank
+  return all
+}
+
+Bitfield.prototype.setByte = function (i, b) {
+  var o = i & this._pageMask
+  var j = (i - o) / this.pageSize
+  var page = this.pages.get(j, false)
+
+  o += this.pageOffset
+
+  if (page.buffer[o] === b) return false
+  page.buffer[o] = b
+
+  if (i >= this.byteLength) {
+    this.byteLength = i + 1
+    this.length = this.byteLength * 8
   }
 
-  return bufs.length === 1 ? bufs[0] : Buffer.concat(bufs, bufs.length * this.pageSize)
+  if (this._trackUpdates) this.pages.updated(page)
+
+  return true
 }
 
-SparseBitfield.prototype.getBuffer = function (offset, buffer) {
-  var tree = this._find(offset * 8, false)
-  if (!tree || !tree.bitfield) return null
-  return tree.bitfield.buffer
+function alloc (n) {
+  if (Buffer.alloc) return Buffer.alloc(n)
+  var b = new Buffer(n)
+  b.fill(0)
+  return b
 }
 
-SparseBitfield.prototype.setBuffer = function (offset, buffer) {
-  while (buffer.length > this.pageSize) {
-    this._setBuffer(offset, buffer.slice(0, this.pageSize))
-    buffer = buffer.slice(this.pageSize)
-    offset += this.pageSize
-  }
-
-  this._setBuffer(offset, expand(buffer, this.pageSize))
-}
-
-SparseBitfield.prototype._setBuffer = function (offset, buffer) {
-  var tree = this._find(offset * 8, true)
-  if (tree.bitfield) tree.bitfield.buffer = buffer
-  else tree.bitfield = new Bitfield(offset, buffer)
-  this._updateLength(tree)
-}
-
-SparseBitfield.prototype.set = function (n, val) {
-  var tree = this._find(n, true)
-
-  if (!tree.bitfield) {
-    var buf = alloc(this.pageSize)
-    var offset = (n - n % (this.pageSize * 8)) / 8
-    tree.bitfield = new Bitfield(offset, buf)
-    this._updateLength(tree)
-  }
-
-  if (bits.set(tree.bitfield.buffer, n - 8 * tree.bitfield.offset, val)) {
-    if (this.updates && !tree.bitfield.updated) {
-      tree.bitfield.updated = true
-      this.updates.push(tree.bitfield)
-    }
-    return true
-  }
-
-  return false
-}
-
-SparseBitfield.prototype.get = function (n) {
-  var tree = this._find(n, false)
-  if (!tree || !tree.bitfield) return false
-  return bits.get(tree.bitfield.buffer, n - 8 * tree.bitfield.offset)
-}
-
-SparseBitfield.prototype._find = function (n, grow) {
-  while (n >= this.treeLength) this._grow()
-
-  var tree = this.tree
-  var treeLength = this.treeLength
-  var bitfieldLength = this.pageSize * 8
-
-  while (true) {
-    if (tree.children) {
-      treeLength /= BRANCHES
-      var child = Math.floor(n / treeLength)
-      n -= child * treeLength
-      if (!tree.children[child]) {
-        if (!grow) return null
-        tree.children[child] = new BitTree()
-      }
-      tree = tree.children[child]
-      continue
-    }
-
-    if (tree.bitfield || treeLength === bitfieldLength) return tree
-    if (!grow) return null
-    tree.children = new Array(BRANCHES)
-  }
-}
-
-SparseBitfield.prototype._updateLength = function (tree) {
-  var length = (tree.bitfield.offset + this.pageSize) * 8
-  if (length > this.length) this.length = length
-}
-
-SparseBitfield.prototype._grow = function () {
-  this.treeLength *= BRANCHES
-
-  if (!this.tree.children && !this.tree.bitfield) return
-
-  var tree = new BitTree()
-  tree.children = new Array(BRANCHES)
-  tree.children[0] = this.tree
-  this.tree = tree
-}
-
-function BitTree () {
-  this.children = null
-  this.bitfield = null
-}
-
-function Bitfield (offset, buffer) {
-  this.offset = offset
-  this.buffer = buffer
-  this.updated = false
-}
-
-function expand (buf, len) {
-  if (buf.length >= len) return buf
-  var clone = alloc(len)
-  buf.copy(clone)
-  return clone
+function powerOfTwo (x) {
+  return !(x & (x - 1))
 }

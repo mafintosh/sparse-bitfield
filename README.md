@@ -35,7 +35,8 @@ Create a new bitfield. Options include
 ``` js
 {
   pageSize: 1024, // how big should the partial buffers be
-  trackUpdates: false // track when partial bitfields are updated
+  buffer: anExistingBitfield,
+  trackUpdates: false // track when pages are being updated in the pager
 }
 ```
 
@@ -47,34 +48,14 @@ Set a bit to true or false.
 
 Get the value of a bit.
 
-#### `var buffer = bits.getBuffer(offset)`
+#### `bits.pages`
 
-Get a partial buffer at a byte offset.
-Returns `null` if offset is not currently in use.
-
-#### `bits.setBuffer(offset, buffer)`
-
-Set a partial buffer corresponding to the byte offset.
-Mostly useful if you reload a serialized bitfield.
+A [memory-pager](https://github.com/mafintosh/memory-pager) instance that is managing the underlying memory.
+If you set `trackUpdates` to true in the constructor you can use `.lastUpdate()` on this instance to get the last updated memory page.
 
 #### `var buffer = bits.toBuffer()`
 
 Get a single buffer representing the entire bitfield.
-
-#### `var update = bits.nextUpdate()`
-
-Returns the next updated bitfield if the `trackUpdates` option was set.
-The update contains the following properties
-
-``` js
-{
-  offset: byteOffset,
-  buffer: partialBitfield
-}
-```
-
-If nothing was updated since the last time this was called `null` is returned.
-Mostly useful if you want to serialize the bitfield.
 
 ## License
 

@@ -29,13 +29,13 @@ tape('set large and get', function (t) {
 tape('get and set buffer', function (t) {
   var bits = bitfield({trackUpdates: true})
 
-  t.same(bits.getBuffer(0), null)
-  t.same(bits.getBuffer(Math.floor(9999999999999 / 8)), null)
+  t.same(bits.pages.get(0, true), undefined)
+  t.same(bits.pages.get(Math.floor(9999999999999 / 8 / 1024), true), undefined)
   bits.set(9999999999999, true)
 
   var bits2 = bitfield()
-  var upd = bits.nextUpdate()
-  bits2.setBuffer(upd.offset, upd.buffer)
+  var upd = bits.pages.lastUpdate()
+  bits2.pages.set(Math.floor(upd.offset / 1024), upd.buffer)
   t.same(bits2.get(9999999999999), true, 'bit is set')
   t.end()
 })
@@ -47,11 +47,11 @@ tape('toBuffer', function (t) {
 
   bits.set(0, true)
 
-  t.same(bits.toBuffer(), bits.getBuffer(0))
+  t.same(bits.toBuffer(), bits.pages.get(0).buffer)
 
   bits.set(9000, true)
 
-  t.same(bits.toBuffer(), Buffer.concat([bits.getBuffer(0), bits.getBuffer(1024)]))
+  t.same(bits.toBuffer(), Buffer.concat([bits.pages.get(0).buffer, bits.pages.get(1).buffer]))
   t.end()
 })
 
@@ -74,6 +74,6 @@ tape('set small buffer', function (t) {
   var bits = bitfield(buf)
 
   t.same(bits.get(0), true)
-  t.same(bits.getBuffer(0).length, bits.pageSize)
+  t.same(bits.pages.get(0).buffer.length, bits.pageSize)
   t.end()
 })
