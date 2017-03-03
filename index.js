@@ -7,11 +7,12 @@ function Bitfield (opts) {
   if (!opts) opts = {}
   if (Buffer.isBuffer(opts)) opts = {buffer: opts}
 
-  this.length = 0
-  this.byteLength = 0
   this.pageOffset = opts.pageOffset || 0
   this.pageSize = opts.pageSize || 1024
   this.pages = opts.pages || pager(this.pageSize)
+
+  this.byteLength = this.pages.length * this.pageSize
+  this.length = 8 * this.byteLength
 
   if (!powerOfTwo(this.pageSize)) throw new Error('The page size should be a power of two')
 
