@@ -1,6 +1,6 @@
 {
   "name": "sparse-bitfield",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "Bitfield that allocates a series of small buffers to support sparse bits without allocating a massive buffer",
   "main": "index.js",
   "dependencies": {
