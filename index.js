@@ -55,7 +55,7 @@ Bitfield.prototype.toBuffer = function () {
 
   for (var i = 0; i < this.pages.length; i++) {
     var next = this.pages.get(i, true)
-    if (next) next.buffer.copy(all, next.offset)
+    if (next) next.buffer.copy(all, next.offset, this.pageOffset, this.pageOffset + this.pageSize)
   }
 
   return all
