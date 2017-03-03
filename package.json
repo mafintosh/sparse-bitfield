@@ -7,6 +7,7 @@
     "memory-pager": "^1.0.2"
   },
   "devDependencies": {
+    "buffer-alloc": "^1.1.0",
     "standard": "^9.0.0",
     "tape": "^4.6.3"
   },
