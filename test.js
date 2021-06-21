@@ -1,9 +1,9 @@
-var alloc = require('buffer-alloc')
-var tape = require('tape')
-var bitfield = require('./')
+const Buffer = require('buffer').Buffer
+const tape = require('tape')
+const Bitfield = require('./')
 
 tape('set and get', function (t) {
-  var bits = bitfield()
+  const bits = new Bitfield()
 
   t.same(bits.get(0), false, 'first bit is false')
   bits.set(0, true)
@@ -15,7 +15,7 @@ tape('set and get', function (t) {
 })
 
 tape('set large and get', function (t) {
-  var bits = bitfield()
+  const bits = new Bitfield()
 
   t.same(bits.get(9999999999999), false, 'large bit is false')
   bits.set(9999999999999, true)
@@ -27,23 +27,23 @@ tape('set large and get', function (t) {
 })
 
 tape('get and set buffer', function (t) {
-  var bits = bitfield({trackUpdates: true})
+  const bits = new Bitfield({ trackUpdates: true })
 
   t.same(bits.pages.get(0, true), undefined)
   t.same(bits.pages.get(Math.floor(9999999999999 / 8 / 1024), true), undefined)
   bits.set(9999999999999, true)
 
-  var bits2 = bitfield()
-  var upd = bits.pages.lastUpdate()
+  const bits2 = new Bitfield()
+  const upd = bits.pages.lastUpdate()
   bits2.pages.set(Math.floor(upd.offset / 1024), upd.buffer)
   t.same(bits2.get(9999999999999), true, 'bit is set')
   t.end()
 })
 
 tape('toBuffer', function (t) {
-  var bits = bitfield()
+  const bits = new Bitfield()
 
-  t.same(bits.toBuffer(), alloc(0))
+  t.same(bits.toBuffer(), Buffer.alloc(0))
 
   bits.set(0, true)
 
@@ -56,12 +56,12 @@ tape('toBuffer', function (t) {
 })
 
 tape('pass in buffer', function (t) {
-  var bits = bitfield()
+  const bits = new Bitfield()
 
   bits.set(0, true)
   bits.set(9000, true)
 
-  var clone = bitfield(bits.toBuffer())
+  const clone = new Bitfield(bits.toBuffer())
 
   t.same(clone.get(0), true)
   t.same(clone.get(9000), true)
@@ -69,9 +69,8 @@ tape('pass in buffer', function (t) {
 })
 
 tape('set small buffer', function (t) {
-  var buf = alloc(1)
-  buf[0] = 255
-  var bits = bitfield(buf)
+  const buf = Buffer.alloc(1, 255)
+  const bits = new Bitfield(buf)
 
   t.same(bits.get(0), true)
   t.same(bits.pages.get(0).buffer.length, bits.pageSize)
