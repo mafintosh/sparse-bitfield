@@ -1,4 +1,5 @@
 const pager = require('memory-pager')
+const Buffer = require('buffer').Buffer
 
 module.exports = Bitfield
 
@@ -52,7 +53,7 @@ Bitfield.prototype.set = function (i, v) {
 }
 
 Bitfield.prototype.toBuffer = function () {
-  const all = alloc(this.pages.length * this.pageSize)
+  const all = Buffer.alloc(this.pages.length * this.pageSize)
 
   for (let i = 0; i < this.pages.length; i++) {
     const next = this.pages.get(i, true)
@@ -81,14 +82,6 @@ Bitfield.prototype.setByte = function (i, b) {
   if (this._trackUpdates) this.pages.updated(page)
 
   return true
-}
-
-function alloc (n) {
-  if (Buffer.alloc) return Buffer.alloc(n)
-  /* eslint-disable-next-line */
-  const b = new Buffer(n)
-  b.fill(0)
-  return b
 }
 
 function powerOfTwo (x) {

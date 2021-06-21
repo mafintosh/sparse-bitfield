@@ -1,4 +1,4 @@
-const alloc = require('buffer-alloc')
+const Buffer = require('buffer').Buffer
 const tape = require('tape')
 const bitfield = require('./')
 
@@ -43,7 +43,7 @@ tape('get and set buffer', function (t) {
 tape('toBuffer', function (t) {
   const bits = bitfield()
 
-  t.same(bits.toBuffer(), alloc(0))
+  t.same(bits.toBuffer(), Buffer.alloc(0))
 
   bits.set(0, true)
 
@@ -69,8 +69,7 @@ tape('pass in buffer', function (t) {
 })
 
 tape('set small buffer', function (t) {
-  const buf = alloc(1)
-  buf[0] = 255
+  const buf = Buffer.alloc(1, 255)
   const bits = bitfield(buf)
 
   t.same(bits.get(0), true)
