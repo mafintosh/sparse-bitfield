@@ -8,8 +8,8 @@
   },
   "devDependencies": {
     "buffer-alloc": "^1.1.0",
-    "standard": "^9.0.0",
-    "tape": "^4.6.3"
+    "standard": "^16.0.3",
+    "tape": "^5.2.2"
   },
   "scripts": {
     "test": "standard && tape test.js"

@@ -1,11 +1,11 @@
-var pager = require('memory-pager')
+const pager = require('memory-pager')
 
 module.exports = Bitfield
 
 function Bitfield (opts) {
   if (!(this instanceof Bitfield)) return new Bitfield(opts)
   if (!opts) opts = {}
-  if (Buffer.isBuffer(opts)) opts = {buffer: opts}
+  if (Buffer.isBuffer(opts)) opts = { buffer: opts }
 
   this.pageOffset = opts.pageOffset || 0
   this.pageSize = opts.pageSize || 1024
@@ -20,7 +20,7 @@ function Bitfield (opts) {
   this._pageMask = this.pageSize - 1
 
   if (opts.buffer) {
-    for (var i = 0; i < opts.buffer.length; i += this.pageSize) {
+    for (let i = 0; i < opts.buffer.length; i += this.pageSize) {
       this.pages.set(i / this.pageSize, opts.buffer.slice(i, i + this.pageSize))
     }
     this.byteLength = opts.buffer.length
@@ -29,34 +29,34 @@ function Bitfield (opts) {
 }
 
 Bitfield.prototype.get = function (i) {
-  var o = i & 7
-  var j = (i - o) / 8
+  const o = i & 7
+  const j = (i - o) / 8
 
   return !!(this.getByte(j) & (128 >> o))
 }
 
 Bitfield.prototype.getByte = function (i) {
-  var o = i & this._pageMask
-  var j = (i - o) / this.pageSize
-  var page = this.pages.get(j, true)
+  const o = i & this._pageMask
+  const j = (i - o) / this.pageSize
+  const page = this.pages.get(j, true)
 
   return page ? page.buffer[o + this.pageOffset] : 0
 }
 
 Bitfield.prototype.set = function (i, v) {
-  var o = i & 7
-  var j = (i - o) / 8
-  var b = this.getByte(j)
+  const o = i & 7
+  const j = (i - o) / 8
+  const b = this.getByte(j)
 
   return this.setByte(j, v ? b | (128 >> o) : b & (255 ^ (128 >> o)))
 }
 
 Bitfield.prototype.toBuffer = function () {
-  var all = alloc(this.pages.length * this.pageSize)
+  const all = alloc(this.pages.length * this.pageSize)
 
-  for (var i = 0; i < this.pages.length; i++) {
-    var next = this.pages.get(i, true)
-    var allOffset = i * this.pageSize
+  for (let i = 0; i < this.pages.length; i++) {
+    const next = this.pages.get(i, true)
+    const allOffset = i * this.pageSize
     if (next) next.buffer.copy(all, allOffset, this.pageOffset, this.pageOffset + this.pageSize)
   }
 
@@ -64,9 +64,9 @@ Bitfield.prototype.toBuffer = function () {
 }
 
 Bitfield.prototype.setByte = function (i, b) {
-  var o = i & this._pageMask
-  var j = (i - o) / this.pageSize
-  var page = this.pages.get(j, false)
+  let o = i & this._pageMask
+  const j = (i - o) / this.pageSize
+  const page = this.pages.get(j, false)
 
   o += this.pageOffset
 
@@ -85,7 +85,8 @@ Bitfield.prototype.setByte = function (i, b) {
 
 function alloc (n) {
   if (Buffer.alloc) return Buffer.alloc(n)
-  var b = new Buffer(n)
+  /* eslint-disable-next-line */
+  const b = new Buffer(n)
   b.fill(0)
   return b
 }
